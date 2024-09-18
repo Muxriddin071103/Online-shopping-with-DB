@@ -1,13 +1,20 @@
 package uz.app.service;
 
+import uz.app.controller.AdminController;
+import uz.app.controller.UserController;
 import uz.app.entity.User;
 import uz.app.repository.AuthRepository;
+import uz.app.repository.UserRepository;
+import uz.app.role.UsersRole;
 
 import java.util.Optional;
 
 public class AuthService {
     AuthRepository authRepository = AuthRepository.getInstance();
     NotificationService notificationService = NotificationService.getInstance();
+    UserController userController = UserController.getInstance();
+    AdminController adminController = AdminController.getInstance();
+    UserRepository userRepository = UserRepository.getInstance();
 
     public void signUp(User user) {
         Optional<User> optionalUser = authRepository.getByEmail(user.getEmail());
@@ -16,11 +23,12 @@ public class AuthService {
             return;
         }
 
+        user.setRole(UsersRole.USER);
         String confirmationCode = notificationService.generateCode();
         user.setConfirmationCode(confirmationCode);
         notificationService.sendCodeToEmail(user.getEmail(), confirmationCode);
 
-        authRepository.save(user);
+        userRepository.save(user);
     }
 
     public void signIn(String email, String password) {
@@ -31,13 +39,25 @@ public class AuthService {
                 System.out.println("You should confirm the code first");
                 return;
             }
-            if (user.getPassword().equals(password) && user.isConfirmed()) {
-                System.out.println("Welcome to the system");
+            if (user.getPassword().equals(password)) {
+                showMenuBasedOnRole(user);
             } else {
                 System.out.println("Wrong password");
             }
         } else {
             System.out.println("No such email");
+        }
+    }
+
+    private void showMenuBasedOnRole(User user) {
+        switch (user.getRole()) {
+            case ADMIN:
+                adminController.adminMenu();
+                break;
+            case USER:
+                userController.userMenu(user);
+                break;
+            default: System.out.println("Unknown role. Access denied.");
         }
     }
 
@@ -70,7 +90,4 @@ public class AuthService {
         return authService;
     }
 
-    public void allUsers() {
-        authRepository.getAllUsers().forEach(System.out::println);
-    }
 }

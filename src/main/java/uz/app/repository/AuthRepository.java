@@ -1,8 +1,10 @@
 package uz.app.repository;
 
 import uz.app.entity.User;
+import uz.app.role.UsersRole;
 import uz.app.utils.TestConnection;
 
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -11,41 +13,23 @@ import java.util.List;
 import java.util.Optional;
 
 public class AuthRepository {
-    TestConnection testConnection = TestConnection.getInstance();
-
-    public void save(User user) {
-        Statement statement = testConnection.getStatement();
-        try {
-            String query = String.format(
-                    "insert into users(name,email,password,enabled,confirmation_code,confirmed) values('%s','%s','%s','%s','%s','%s')",
-                    user.getName(),
-                    user.getEmail(),
-                    user.getPassword(),
-                    "true",
-                    user.getConfirmationCode(),
-                    user.isConfirmed()
-            );
-            statement.execute(query);
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
+    private TestConnection testConnection = TestConnection.getInstance();
 
     public void updateConfirmationStatus(User user) {
-        Statement statement = testConnection.getStatement();
-        try {
-            String query = String.format("update users set confirmed = '%s' where email = '%s';",
-                    user.isConfirmed(), user.getEmail());
-            statement.execute(query);
+        String query = "UPDATE users SET confirmed = ? WHERE email = ?";
+        try (Statement statement = testConnection.getStatement();
+             PreparedStatement preparedStatement = statement.getConnection().prepareStatement(query)) {
+            preparedStatement.setBoolean(1, user.isConfirmed());
+            preparedStatement.setString(2, user.getEmail());
+            preparedStatement.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
 
     public List<User> getAllUsers() {
-        try {
-            Statement statement = testConnection.getStatement();
-            return getUsers(statement.executeQuery(String.format("select * from users;")));
+        try (Statement statement = testConnection.getStatement()) {
+            return getUsers(statement.executeQuery("SELECT * FROM users;"));
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -53,18 +37,13 @@ public class AuthRepository {
     }
 
     public Optional<User> getByEmail(String email) {
-        Statement statement = testConnection.getStatement();
-        try {
-            ResultSet resultSet = statement.executeQuery(String.format("select * from users where email = '%s';", email));
+        String query = "SELECT * FROM users WHERE email = ?";
+        try (Statement statement = testConnection.getStatement();
+             PreparedStatement preparedStatement = statement.getConnection().prepareStatement(query)) {
+            preparedStatement.setString(1, email);
+            ResultSet resultSet = preparedStatement.executeQuery();
             if (resultSet.next()) {
-                User user = new User();
-                user.setId(resultSet.getLong("id"));
-                user.setName(resultSet.getString("name"));
-                user.setEmail(resultSet.getString("email"));
-                user.setPassword(resultSet.getString("password"));
-                user.setEnabled(resultSet.getBoolean("enabled"));
-                user.setConfirmationCode(resultSet.getString("confirmation_code"));
-                user.setConfirmed(resultSet.getBoolean("confirmed"));
+                User user = mapRowToUser(resultSet);
                 return Optional.of(user);
             } else {
                 System.out.println("No user found with email: " + email);
@@ -72,7 +51,6 @@ public class AuthRepository {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-
         return Optional.empty();
     }
 
@@ -80,20 +58,26 @@ public class AuthRepository {
         List<User> users = new ArrayList<>();
         try {
             while (resultSet.next()) {
-                User user = new User();
-                user.setId(resultSet.getLong("id"));
-                user.setName(resultSet.getString("name"));
-                user.setEmail(resultSet.getString("email"));
-                user.setPassword(resultSet.getString("password"));
-                user.setEnabled(resultSet.getBoolean("enabled"));
-                user.setConfirmationCode(resultSet.getString("confirmation_code"));
-                user.setConfirmed(resultSet.getBoolean("confirmed"));
-                users.add(user);
+                users.add(mapRowToUser(resultSet));
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
         return users;
+    }
+
+    private User mapRowToUser(ResultSet resultSet) throws SQLException {
+        User user = new User();
+        user.setId(resultSet.getLong("id"));
+        user.setName(resultSet.getString("name"));
+        user.setEmail(resultSet.getString("email"));
+        user.setPassword(resultSet.getString("password"));
+        user.setEnabled(resultSet.getBoolean("enabled"));
+        user.setConfirmationCode(resultSet.getString("confirmation_code"));
+        user.setConfirmed(resultSet.getBoolean("confirmed"));
+        user.setBalance(resultSet.getInt("balance"));
+        user.setRole(UsersRole.valueOf(resultSet.getString("role_name")));
+        return user;
     }
 
     private static AuthRepository instance;
